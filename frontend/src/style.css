@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark: var(--bg-dark);
+  --color-darkCard: var(--bg-card);
+  --color-brand: var(--brand);           /* fox orange */
+  --color-brandGreen: var(--profit);
+  --color-brandRed: var(--loss);
+}
+
+/* Red Fox — dark ("fox den"). Palette: #0b0706 #632705 #b75800 #ffd995 #fffff1. */
+:root {
+  --bg-dark: #0b0706;
+  --bg-card: #17110d;
+  --brand: #b75800;
+  --profit: #35c98a;
+  --loss: #f4626f;
+}
+
+/* Red Fox — light ("fox paper"). Gray-scale overrides warmed toward the
+   brand hue instead of the previous neutral-warm inversion. */
+:root[data-theme="light"] {
+  --bg-dark: #fffff1;
+  --bg-card: #ffffff;
+  --brand: #b75800;
+  --profit: #1f9d63;
+  --loss: #d64550;
+
+  --color-white: #0b0706;
+  --color-gray-200: #241c14;
+  --color-gray-300: #4a3c2e;
+  --color-gray-400: #6c5c4a;
+  --color-gray-500: #8a7a68;
+  --color-gray-700: #d2c4b2;
+  --color-gray-800: #e7ddd0;
+  --color-gray-900: #f4ece0;
+}
+
+body {
+  @apply bg-dark text-gray-200 m-0 p-0 font-sans transition-colors duration-300;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] body {
+  color-scheme: light;
+}

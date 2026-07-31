@@ -1,0 +1,12 @@
+build/bin
+node_modules
+frontend/dist
+
+# local data / secrets — never commit
+*.db
+*.db-journal
+*.exe
+*.log
+build_log.txt
+*.stackdump
+.impeccable/
