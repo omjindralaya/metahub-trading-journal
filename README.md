@@ -4,13 +4,13 @@ Aplikasi desktop (Windows) untuk mencatat dan menganalisis trade dari akun **Met
 
 ## Fitur utama
 
-- **Auto-sync dari MT5** — menarik riwayat transaksi dan posisi floating langsung dari terminal MT5 yang sedang login, tanpa input manual.
-- **Input manual** — tambah trade secara manual untuk akun/instrumen di luar MT5.
-- **Dashboard & jurnal** — ringkasan performa per periode (hari ini/30/60/90/semua), per akun MT5 (tidak dicampur antar akun/mata uang).
+- **Auto-sync dari MT5** - menarik riwayat transaksi dan posisi floating langsung dari terminal MT5 yang sedang login, tanpa input manual.
+- **Input manual** - tambah trade secara manual untuk akun/instrumen di luar MT5.
+- **Dashboard & jurnal** - ringkasan performa per periode (hari ini/30/60/90/semua), per akun MT5 (tidak dicampur antar akun/mata uang).
 - **Login Google & sinkron cloud** — login sekali via browser, lalu backend mendorong trade tertutup dan posisi live ke MetaHub Cloud secara berkala.
-- **Guard akun target** — memberi tahu jika akun MT5 yang sedang aktif di terminal bukan akun yang dipilih user untuk disinkron, alih-alih diam-diam salah kirim data.
-- **Entitlement/langganan** — status akses (gratis/berbayar) dicek ke server saat startup dan berkala; sinkron cloud hanya jalan sesuai hak akses akun.
-- **Auto-backfill** — riwayat lama yang sebelumnya tertahan batas sinkron otomatis dikirim ulang setelah upgrade paket.
+- **Guard akun target** - memberi tahu jika akun MT5 yang sedang aktif di terminal bukan akun yang dipilih user untuk disinkron, alih-alih diam-diam salah kirim data.
+- **Entitlement/langganan** - status akses (gratis/berbayar) dicek ke server saat startup dan berkala; sinkron cloud hanya jalan sesuai hak akses akun.
+- **Auto-backfill** - riwayat lama yang sebelumnya tertahan batas sinkron otomatis dikirim ulang setelah upgrade paket.
 
 ## Struktur proyek
 
@@ -57,7 +57,7 @@ File ini memuat jurnal trading, token cloud (tersegel DPAPI), dan private key de
 
 ## Build rilis
 
-**Jangan pakai `wails build` polos untuk rilis** — API URL default-nya menunjuk ke `localhost:8080` (lihat `backend/sync_service.go`), sehingga binary hasil build akan menembak mesin development, bukan server produksi.
+**Jangan pakai `wails build` polos untuk rilis** - API URL default-nya menunjuk ke `localhost:8080` (lihat `backend/sync_service.go`), sehingga binary hasil build akan menembak mesin development, bukan server produksi.
 
 Gunakan script rilis, yang menyuntikkan URL produksi lewat `-ldflags -X`:
 
@@ -67,7 +67,7 @@ Gunakan script rilis, yang menyuntikkan URL produksi lewat `-ldflags -X`:
 ./build-release.ps1 -Obfuscate     # + obfuscate simbol via garble (butuh garble terpasang)
 ```
 
-Catatan: obfuscation di sini hanya menaikkan biaya membaca binary, bukan mekanisme proteksi — hak akses (sinkron cloud) dijaga di server via signed device key, bukan di client.
+Catatan: obfuscation di sini hanya menaikkan biaya membaca binary, bukan mekanisme proteksi - hak akses (sinkron cloud) dijaga di server via signed device key, bukan di client.
 
 Binary hasil build (`*.exe`, `build/bin/`) sengaja **tidak** disertakan di repo ini (lihat `.gitignore`) — didistribusikan lewat GitHub Releases, bukan lewat riwayat git.
 
@@ -78,11 +78,11 @@ go vet ./...
 go test ./...
 ```
 
-Test Go berjalan di Windows (identitas device memakai DPAPI/TPM, lihat `backend/device_key_*_windows.go`) dan memakai database sementara — tidak menyentuh `journal.db` milik Anda. CI menjalankan keduanya plus build frontend pada setiap PR (`.github/workflows/ci.yml`).
+Test Go berjalan di Windows (identitas device memakai DPAPI/TPM, lihat `backend/device_key_*_windows.go`) dan memakai database sementara - tidak menyentuh `journal.db` milik Anda. CI menjalankan keduanya plus build frontend pada setiap PR (`.github/workflows/ci.yml`).
 
 ## Keamanan
 
-Laporkan kerentanan lewat [Security Advisories](../../security/advisories/new), bukan issue publik. Baca [SECURITY.md](SECURITY.md) lebih dulu — di sana dijelaskan beberapa hal yang tampak seperti kerentanan tapi sebenarnya keputusan desain (mis. cache hak akses lokal yang memang bisa diedit, karena gerbang sesungguhnya ada di server).
+Laporkan kerentanan lewat [Security Advisories](../../security/advisories/new), bukan issue publik. Baca [SECURITY.md](SECURITY.md) lebih dulu - di sana dijelaskan beberapa hal yang tampak seperti kerentanan tapi sebenarnya keputusan desain (mis. cache hak akses lokal yang memang bisa diedit, karena gerbang sesungguhnya ada di server).
 
 ## Lisensi
 
