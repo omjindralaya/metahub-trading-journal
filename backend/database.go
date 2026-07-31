@@ -2,7 +2,10 @@ package backend
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,14 +17,97 @@ import (
 
 var DB *gorm.DB
 
+// legacyDBPath adalah lokasi lama: relatif terhadap CURRENT WORKING DIRECTORY.
+// Itu bukan lokasi, itu kebetulan — nilainya berubah menurut dari mana proses
+// dijalankan. Shortcut dengan working directory berbeda membuka database KOSONG
+// yang lain, dan pemasangan ke C:\Program Files (tidak writable bagi user biasa)
+// membuat gorm.Open gagal lalu log.Fatalf mematikan aplikasi tanpa jendela error.
+const legacyDBPath = "journal.db"
+
+// dbPathOverride dipakai TEST agar tidak menulis ke database SUNGGUHAN milik
+// user di %APPDATA% (beberapa test menjalankan DELETE FROM).
+var dbPathOverride string
+
+// resolveDBPath memilih lokasi database yang stabil dan pasti writable:
+// %APPDATA%\MetaHub\journal.db di Windows (os.UserConfigDir), setara di OS lain.
+// Bila direktori itu tak bisa disiapkan, jatuh ke perilaku lama alih-alih
+// menolak jalan — jurnal lokal harus tetap hidup.
+func resolveDBPath() string {
+	if dbPathOverride != "" {
+		return dbPathOverride
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		log.Printf("InitDB: direktori konfigurasi user tidak terbaca (%v); memakai %s", err, legacyDBPath)
+		return legacyDBPath
+	}
+	appDir := filepath.Join(dir, "MetaHub")
+	// 0700: file ini memuat token cloud tersegel dan private key device. Di Windows
+	// bit ini praktis diabaikan (DPAPI yang menjaga isinya), tapi benar di OS lain.
+	if err := os.MkdirAll(appDir, 0o700); err != nil {
+		log.Printf("InitDB: gagal menyiapkan %s (%v); memakai %s", appDir, err, legacyDBPath)
+		return legacyDBPath
+	}
+	return filepath.Join(appDir, "journal.db")
+}
+
+// migrateLegacyDBFile memindahkan database yang sudah ada di working directory
+// ke lokasi baru. Tanpa ini, upgrade akan terlihat seperti kehilangan SELURUH
+// jurnal: aplikasi membuka file baru yang kosong dan data lama tetap ada tapi
+// tak pernah dibaca lagi. Hanya berjalan bila tujuan BELUM ada — file di tujuan
+// selalu lebih berwenang, jangan pernah ditimpa.
+func migrateLegacyDBFile(target string) {
+	if target == legacyDBPath {
+		return
+	}
+	if _, err := os.Stat(target); err == nil {
+		return
+	}
+	if _, err := os.Stat(legacyDBPath); err != nil {
+		return
+	}
+
+	if err := os.Rename(legacyDBPath, target); err == nil {
+		log.Printf("InitDB: database lama dipindahkan ke %s", target)
+		return
+	}
+	// Rename gagal lintas volume; salin lalu biarkan yang lama sebagai cadangan.
+	if err := copyFile(legacyDBPath, target); err != nil {
+		log.Printf("InitDB: gagal memindahkan database lama (%v); memulai dari kosong di %s", err, target)
+		return
+	}
+	log.Printf("InitDB: database lama disalin ke %s (salinan lama dibiarkan sebagai cadangan)", target)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
+}
+
 // InitDB menginisialisasi koneksi ke SQLite
 func InitDB() {
+	path := resolveDBPath()
+	migrateLegacyDBFile(path)
+
 	var err error
-	DB, err = gorm.Open(sqlite.Open("journal.db"), &gorm.Config{
+	DB, err = gorm.Open(sqlite.Open(path), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
-		log.Fatalf("Gagal terhubung ke database SQLite: %v", err)
+		log.Fatalf("Gagal terhubung ke database SQLite di %s: %v", path, err)
 	}
 
 	// Auto migrate schema
@@ -34,8 +120,13 @@ func InitDB() {
 		log.Fatalf("Gagal migrasi identitas akun: %v", err)
 	}
 
-	// Clean up duplicate IN deals (yang terlanjur masuk dengan profit 0 dan commission 0)
-	DB.Where("profit = ? AND net_profit = ? AND commission = ? AND swap = ?", 0, 0, 0, 0).Delete(&Trade{})
+	// TIDAK ADA pembersihan baris ber-nilai-nol di sini. Dulu setiap baris dengan
+	// profit/net_profit/commission/swap = 0 dihapus pada SETIAP startup untuk
+	// membuang "deal IN duplikat". Saringan itu tidak bisa membedakan deal sampah
+	// dari trade yang sah-sah saja break-even, dan tidak dibatasi akun mana pun —
+	// jadi trade impas dan trade manual ber-P/L nol lenyap diam-diam begitu
+	// aplikasi dibuka lagi. Deal IN kini disaring di sumbernya (mt5_service.go
+	// melewati d.Entry == DealEntryIn), jadi tidak ada lagi yang perlu dibersihkan.
 }
 
 // SaveTrades menyimpan atau memperbarui transaksi dari MT5 ke database
@@ -244,12 +335,21 @@ func AddManualTrade(trade Trade) error {
 
 
 
-// CacheOpenPositions menyimpan snapshot open positions ke database
+// CacheOpenPositions menyimpan snapshot open positions ke database.
+//
+// Satu upsert massal, bukan satu DB.Save per posisi: fungsi ini dipanggil dari
+// FetchOpenPositions pada SETIAP tick 5 detik, jadi 20 posisi terbuka dulu berarti
+// 20 transaksi SQLite tiap 5 detik selama aplikasi hidup.
 func CacheOpenPositions(positions []OpenPosition) {
+	if len(positions) == 0 {
+		return
+	}
+
+	rows := make([]SavedOpenPosition, 0, len(positions))
 	for _, p := range positions {
-		// Use Ticket as PositionID for now since OpenPosition doesn't expose PositionID directly, 
+		// Use Ticket as PositionID for now since OpenPosition doesn't expose PositionID directly,
 		// but in MT5 for deals, PositionID usually matches the original Ticket of the open position.
-		pos := SavedOpenPosition{
+		rows = append(rows, SavedOpenPosition{
 			PositionID: p.Ticket,
 			Ticket:     p.Ticket,
 			Symbol:     p.Symbol,
@@ -258,8 +358,22 @@ func CacheOpenPositions(positions []OpenPosition) {
 			TP:         p.TP,
 			MT5Login:   p.MT5Login,
 			MT5Server:  p.MT5Server,
-		}
-		// Save to db, updating if exists
-		DB.Save(&pos)
+		})
+	}
+
+	// Konflik dinilai atas SELURUH primary key komposit (position_id, mt5_login,
+	// mt5_server). Memakai position_id saja akan membuat akun kedua menimpa baris
+	// akun pertama — persis kehilangan SL/TP yang diperbaiki di models.go.
+	err := DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "position_id"}, {Name: "mt5_login"}, {Name: "mt5_server"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"ticket", "symbol", "type", "sl", "tp"}),
+	}).CreateInBatches(&rows, saveTradesBatchSize).Error
+	if err != nil {
+		// Tidak fatal: cache ini efemeral dan diisi ulang tick berikutnya. Tapi
+		// jangan ditelan diam-diam — SL/TP yang hilang di sini muncul sebagai
+		// nol pada trade yang tertutup nanti.
+		log.Printf("CacheOpenPositions: gagal menyimpan %d posisi: %v", len(rows), err)
 	}
 }

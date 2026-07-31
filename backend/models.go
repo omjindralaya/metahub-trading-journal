@@ -52,24 +52,22 @@ type Trade struct {
 
 // SavedOpenPosition merekam snapshot SL dan TP dari posisi yang sedang berjalan.
 // Data ini digunakan untuk melengkapi Trade ketika posisinya ditutup.
+//
+// Primary key-nya KOMPOSIT (position_id, mt5_login, mt5_server) dengan alasan
+// yang sama dengan unique index komposit pada trades: position_id ditentukan
+// broker dan hanya unik di dalam satu trade server. Dengan position_id sebagai
+// satu-satunya key, akun kedua menimpa baris akun pertama; lalu pencarian SL/TP
+// akun pertama (yang menyaring login+server) tidak menemukan apa-apa dan trade
+// tersimpan dengan SL/TP nol — tanpa error di mana pun.
 type SavedOpenPosition struct {
 	PositionID string  `json:"position_id" gorm:"primaryKey"`
+	MT5Login   string  `json:"mt5_login" gorm:"primaryKey"`
+	MT5Server  string  `json:"mt5_server" gorm:"primaryKey"`
 	Ticket     string  `json:"ticket"`
 	Symbol     string  `json:"symbol"`
 	Type       string  `json:"type"`
 	SL         float64 `json:"sl"`
 	TP         float64 `json:"tp"`
-	MT5Login   string  `json:"mt5_login" gorm:"index"`
-	MT5Server  string  `json:"mt5_server" gorm:"index"`
-}
-
-// DailySummary mewakili rangkuman metrik per hari
-type DailySummary struct {
-	Date        string  `json:"date"` // Format YYYY-MM-DD
-	TotalPnL    float64 `json:"total_pnl"`
-	TotalTrades int     `json:"total_trades"`
-	WinCount    int     `json:"win_count"`
-	LossCount   int     `json:"loss_count"`
 }
 
 // Setting mewakili pengaturan umum aplikasi seperti mata uang

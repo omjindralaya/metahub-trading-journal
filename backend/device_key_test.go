@@ -4,12 +4,26 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
+// TestMain mengarahkan database ke direktori sementara. Sejak InitDB memakai
+// %APPDATA%\MetaHub\journal.db, menjalankan test TANPA override berarti test
+// membuka database SUNGGUHAN milik user — dan beberapa di antaranya menjalankan
+// DELETE FROM trades.
 func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "metahub-test-db")
+	if err != nil {
+		panic(err)
+	}
+	dbPathOverride = filepath.Join(dir, "journal.db")
+
 	InitDB()
-	os.Exit(m.Run())
+	code := m.Run()
+
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // Kontrak KeyProvider: apa pun implementasinya (software hari ini, TPM besok),

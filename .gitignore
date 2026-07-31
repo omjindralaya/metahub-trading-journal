@@ -1,10 +1,22 @@
 build/bin
 node_modules
-frontend/dist
+
+# Bundle frontend hasil build. Isinya artefak, TAPI direktorinya harus tetap ada
+# di repo: main.go melakukan `//go:embed all:frontend/dist`, dan embed gagal
+# ("no matching files found") bila direktorinya kosong — sehingga `go build`
+# pada clone segar tidak jalan. Karena itu isinya diabaikan lewat `/*`
+# (bukan direktorinya) dan .gitkeep dikecualikan.
+frontend/dist/*
+!frontend/dist/.gitkeep
+
+# Artefak wails: penanda kapan `npm install` perlu diulang.
+frontend/package.json.md5
 
 # local data / secrets — never commit
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.exe
 *.log
 build_log.txt

@@ -33,6 +33,28 @@ wails dev
 
 Menjalankan dev server Vite dengan hot reload. Bisa juga dibuka lewat browser di `http://localhost:34115` untuk akses devtools dan memanggil method Go langsung.
 
+### Kalau `go build` gagal pada clone baru
+
+`main.go` melakukan `//go:embed all:frontend/dist`, dan bundle frontend tidak di-commit. Pada clone segar, perintah Go langsung akan berhenti dengan:
+
+```
+pattern all:frontend/dist: no matching files found
+```
+
+Bangun frontend-nya sekali dulu — `wails dev` dan `wails build` melakukannya otomatis, atau manual:
+
+```
+cd frontend && npm ci && npm run build
+```
+
+Setelah itu `go build ./...`, `go vet ./...`, dan `go test ./...` jalan seperti biasa.
+
+### Di mana data lokal disimpan
+
+`%APPDATA%\MetaHub\journal.db` (Windows). Lokasinya sengaja tidak relatif terhadap working directory — kalau relatif, shortcut dengan working directory berbeda akan membuka database kosong yang lain. Database dari versi lama yang masih tersimpan di sebelah executable dipindahkan otomatis sekali saat startup.
+
+File ini memuat jurnal trading, token cloud (tersegel DPAPI), dan private key device. Jangan dibagikan.
+
 ## Build rilis
 
 **Jangan pakai `wails build` polos untuk rilis** — API URL default-nya menunjuk ke `localhost:8080` (lihat `backend/sync_service.go`), sehingga binary hasil build akan menembak mesin development, bukan server produksi.
@@ -48,3 +70,20 @@ Gunakan script rilis, yang menyuntikkan URL produksi lewat `-ldflags -X`:
 Catatan: obfuscation di sini hanya menaikkan biaya membaca binary, bukan mekanisme proteksi — hak akses (sinkron cloud) dijaga di server via signed device key, bukan di client.
 
 Binary hasil build (`*.exe`, `build/bin/`) sengaja **tidak** disertakan di repo ini (lihat `.gitignore`) — didistribusikan lewat GitHub Releases, bukan lewat riwayat git.
+
+## Test
+
+```
+go vet ./...
+go test ./...
+```
+
+Test Go berjalan di Windows (identitas device memakai DPAPI/TPM, lihat `backend/device_key_*_windows.go`) dan memakai database sementara — tidak menyentuh `journal.db` milik Anda. CI menjalankan keduanya plus build frontend pada setiap PR (`.github/workflows/ci.yml`).
+
+## Keamanan
+
+Laporkan kerentanan lewat [Security Advisories](../../security/advisories/new), bukan issue publik. Baca [SECURITY.md](SECURITY.md) lebih dulu — di sana dijelaskan beberapa hal yang tampak seperti kerentanan tapi sebenarnya keputusan desain (mis. cache hak akses lokal yang memang bisa diedit, karena gerbang sesungguhnya ada di server).
+
+## Lisensi
+
+[MIT](LICENSE).

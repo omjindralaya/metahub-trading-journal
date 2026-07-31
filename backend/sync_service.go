@@ -5,7 +5,7 @@ import (
 	"errors"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -631,7 +631,7 @@ func postTradeChunk(token string, items []TradeSyncItem, currency string, balanc
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := ioutil.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return 0, 0, nil, handleSyncUnauthorized(respBody)
@@ -1068,7 +1068,7 @@ func pushOpenPositions(token string, positions []OpenPosition) (string, error) {
 
 	// Parse envelope agar penolakan server (mis. profil terkunci Real/Demo,
 	// validasi payload) tidak ditelan diam-diam pada loop 5 detik.
-	respBody, _ := ioutil.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", handleSyncUnauthorized(respBody)

@@ -14,8 +14,12 @@ import "log"
 //     index on (mt5_login, mt5_server, ticket). MT5 deal tickets are unique only
 //     within one trade server, so the old global index let a second account's
 //     ticket overwrite the first account's row.
-//  3. Rebuild the ephemeral open-position cache so it carries the new columns.
-//     Dropping it is harmless — AutoSyncTick re-populates it within one tick.
+//  3. Rebuild the ephemeral open-position cache so it carries the current schema
+//     — the account columns, and the COMPOSITE primary key that keeps two
+//     accounts sharing a position_id from overwriting each other's SL/TP.
+//     Dropping it is harmless — AutoSyncTick re-populates it within one tick,
+//     and that is also what applies the primary-key change: SQLite cannot alter
+//     a primary key in place, so the rebuild IS the migration.
 func migrateAccountIdentity() error {
 	// (1) Backfill legacy trades.
 	login := GetSetting("mt5_account")

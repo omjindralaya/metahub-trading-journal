@@ -1,15 +1,24 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// desktopAuthClient adalah client untuk kedua panggilan login Google. Ia HARUS
+// punya timeout sendiri: http.Get/http.Post telanjang memakai http.DefaultClient,
+// yang tidak punya batas waktu sama sekali. Server yang menerima koneksi lalu
+// diam membuat panggilan itu tidak pernah kembali — dan karena ctx hanya
+// diperiksa DI ANTARA dua polling, timeout 9 menit maupun tombol "Batal" tidak
+// pernah sempat terbaca. Variabel supaya test bisa memperkecilnya.
+var desktopAuthClient = &http.Client{Timeout: 20 * time.Second}
 
 // desktopAuthURL adalah halaman web yang menyelesaikan login Google untuk
 // desktop (lihat metahub-web DesktopAuthPage). Variabel supaya deployment bisa
@@ -52,12 +61,8 @@ func CancelGoogleLogin() {
 // sampai tab browser menyelesaikannya, dibatalkan (CancelGoogleLogin), atau
 // timeout.
 func LoginWithGoogleDesktop(openBrowser func(url string)) error {
-	sessionID, authURL, err := createDesktopSession()
-	if err != nil {
-		return err
-	}
-	openBrowser(authURL)
-
+	// ctx dibuat SEBELUM request pertama supaya pembuatan sesi pun bisa dibatalkan
+	// dan ikut terkena batas waktu — bukan hanya polling sesudahnya.
 	ctx, cancel := context.WithTimeout(context.Background(), googleLoginTimeout)
 	googleLoginMu.Lock()
 	googleLoginCancel = cancel
@@ -68,6 +73,12 @@ func LoginWithGoogleDesktop(openBrowser func(url string)) error {
 		googleLoginCancel = nil
 		googleLoginMu.Unlock()
 	}()
+
+	sessionID, authURL, err := createDesktopSession(ctx)
+	if err != nil {
+		return err
+	}
+	openBrowser(authURL)
 
 	ticker := time.NewTicker(googleLoginPollInterval)
 	defer ticker.Stop()
@@ -80,7 +91,7 @@ func LoginWithGoogleDesktop(openBrowser func(url string)) error {
 			}
 			return fmt.Errorf("login Google kedaluwarsa, coba lagi")
 		case <-ticker.C:
-			loginResp, pending, perr := pollDesktopSession(sessionID)
+			loginResp, pending, perr := pollDesktopSession(ctx, sessionID)
 			if perr != nil {
 				return perr
 			}
@@ -103,14 +114,20 @@ type desktopSessionCreateResponse struct {
 
 // createDesktopSession minta server membuatkan sesi baru dan mengembalikan
 // id-nya plus URL browser yang membawanya.
-func createDesktopSession() (sessionID string, authURL string, err error) {
-	resp, err := http.Post(CloudAPIURL+"/auth/desktop/session", "application/json", nil)
+func createDesktopSession(ctx context.Context) (sessionID string, authURL string, err error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", CloudAPIURL+"/auth/desktop/session", bytes.NewReader(nil))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := desktopAuthClient.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("connection failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var out desktopSessionCreateResponse
 	if jerr := json.Unmarshal(body, &out); jerr != nil {
 		return "", "", fmt.Errorf("respons server tidak dikenali (status %d)", resp.StatusCode)
@@ -134,14 +151,19 @@ type desktopSessionGetResponse struct {
 
 // pollDesktopSession mengecek status sesi sekali. pending=true berarti tab
 // browser belum selesai — bukan error, pemanggil harus coba lagi nanti.
-func pollDesktopSession(sessionID string) (loginResp *LoginResponse, pending bool, err error) {
-	resp, err := http.Get(CloudAPIURL + "/auth/desktop/session/" + sessionID)
+func pollDesktopSession(ctx context.Context, sessionID string) (loginResp *LoginResponse, pending bool, err error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", CloudAPIURL+"/auth/desktop/session/"+sessionID, nil)
+	if err != nil {
+		return nil, false, err
+	}
+
+	resp, err := desktopAuthClient.Do(req)
 	if err != nil {
 		return nil, false, fmt.Errorf("connection failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var out desktopSessionGetResponse
 	if jerr := json.Unmarshal(body, &out); jerr != nil {
 		return nil, false, fmt.Errorf("respons server tidak dikenali (status %d)", resp.StatusCode)

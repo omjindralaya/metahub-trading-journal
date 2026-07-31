@@ -342,6 +342,24 @@ func FetchHistoryFromMT5Between(dateFrom, dateTo time.Time) ([]Trade, string, er
 		}
 	}
 
+	// Identitas akun dibaca SEKALI. GetSetting adalah query SQLite; dulu dipanggil
+	// empat kali per deal (dua di konstruksi Trade, dua di lookup SL/TP), sehingga
+	// import riwayat penuh puluhan ribu trade berarti ratusan ribu query.
+	activeLogin, activeServer := activeAccount()
+
+	// SL/TP juga dimuat SEKALI ke map, bukan satu DB.First per deal di dalam loop.
+	// Ini kontras yang dulu janggal: SaveTrades sudah berupa upsert massal,
+	// sementara jalur baca di sini masih N+1.
+	sltp := make(map[string]SavedOpenPosition)
+	var cachedPositions []SavedOpenPosition
+	if err := DB.Where("mt5_login = ? AND mt5_server = ?", activeLogin, activeServer).
+		Find(&cachedPositions).Error; err != nil {
+		log.Printf("Peringatan: gagal memuat cache SL/TP (%v); SL/TP akan kosong", err)
+	}
+	for _, c := range cachedPositions {
+		sltp[c.PositionID] = c
+	}
+
 	var trades []Trade
 	for _, d := range deals {
 		// Abaikan Deal IN (karena kita hanya butuh Deal OUT yang merealisasikan PnL)
@@ -390,15 +408,14 @@ func FetchHistoryFromMT5Between(dateFrom, dateTo time.Time) ([]Trade, string, er
 			NetProfit:   netProfit,
 			PositionID:  posIDStr,
 			AccountType: accountType,
-			MT5Login:    GetSetting("mt5_account"),
-			MT5Server:   GetSetting("mt5_server"),
+			MT5Login:    activeLogin,
+			MT5Server:   activeServer,
 		}
 
-		// Cari SL dan TP dari Cache jika ada — HANYA untuk akun yang sama, supaya
-		// posisi milik akun lain dengan position_id kebetulan sama tidak menodai SL/TP.
-		var cachedPos SavedOpenPosition
-		if DB.First(&cachedPos, "position_id = ? AND mt5_login = ? AND mt5_server = ?",
-			posIDStr, GetSetting("mt5_account"), GetSetting("mt5_server")).Error == nil {
+		// Cari SL dan TP dari cache — HANYA untuk akun yang sama, supaya posisi
+		// milik akun lain dengan position_id kebetulan sama tidak menodai SL/TP.
+		// Map-nya sudah disaring per akun saat dimuat di atas.
+		if cachedPos, ok := sltp[posIDStr]; ok {
 			t.SL = cachedPos.SL
 			t.TP = cachedPos.TP
 		}

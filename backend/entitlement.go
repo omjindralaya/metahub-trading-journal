@@ -3,7 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -219,7 +219,7 @@ func RefreshEntitlement() error {
 		return fmt.Errorf("sesi berakhir, silakan login lagi")
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var parsed entitlementResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return fmt.Errorf("respons server tidak dikenali (status %d)", resp.StatusCode)
