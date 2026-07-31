@@ -12,8 +12,7 @@ langkah reproduksi, dan dampak yang Anda perkirakan. Kami berusaha membalas dala
 
 ## Cakupan
 
-Repositori ini hanya berisi **aplikasi desktop**. Server MetaHub Cloud
-(`api.metahub.id`) ada di repositori terpisah dan tidak bisa dinilai dari kode di
+Repositori ini hanya berisi **aplikasi desktop**. Server MetaHub Cloud ada di repositori terpisah dan tidak bisa dinilai dari kode di
 sini.
 
 ## Model ancaman yang perlu diketahui sebelum melapor
