@@ -1,19 +1,50 @@
-# README
+# MetaHub Desktop — Jurnal Trading Komunitas
 
-## About
+Aplikasi desktop (Windows) untuk mencatat dan menganalisis trade dari akun **MetaTrader 5**, dengan sinkronisasi opsional ke **MetaHub Cloud** untuk fitur komunitas (leaderboard, feed, langganan trader). Dibangun dengan [Wails](https://wails.io) (backend Go + frontend React/TypeScript).
 
-This is the official Wails React-TS template.
+## Fitur utama
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+- **Auto-sync dari MT5** — menarik riwayat transaksi dan posisi floating langsung dari terminal MT5 yang sedang login, tanpa input manual.
+- **Input manual** — tambah trade secara manual untuk akun/instrumen di luar MT5.
+- **Dashboard & jurnal** — ringkasan performa per periode (hari ini/30/60/90/semua), per akun MT5 (tidak dicampur antar akun/mata uang).
+- **Login Google & sinkron cloud** — login sekali via browser, lalu backend mendorong trade tertutup dan posisi live ke MetaHub Cloud secara berkala.
+- **Guard akun target** — memberi tahu jika akun MT5 yang sedang aktif di terminal bukan akun yang dipilih user untuk disinkron, alih-alih diam-diam salah kirim data.
+- **Entitlement/langganan** — status akses (gratis/berbayar) dicek ke server saat startup dan berkala; sinkron cloud hanya jalan sesuai hak akses akun.
+- **Auto-backfill** — riwayat lama yang sebelumnya tertahan batas sinkron otomatis dikirim ulang setelah upgrade paket.
 
-## Live Development
+## Struktur proyek
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+```
+app.go              # Binding Go <-> frontend (Wails)
+main.go             # Entry point aplikasi
+backend/            # Logika inti: MT5, database SQLite, sync cloud, auth, entitlement
+frontend/           # UI React + TypeScript (Vite, Tailwind)
+build/              # Aset & konfigurasi packaging (ikon, installer NSIS, manifest Windows)
+build-release.ps1   # Script build rilis produksi (lihat di bawah)
+```
 
-## Building
+## Menjalankan secara lokal (development)
 
-To build a redistributable, production mode package, use `wails build`.
+Prasyarat: Go 1.2x+, Node.js, [Wails CLI v2](https://wails.io/docs/gettingstarted/installation).
+
+```
+wails dev
+```
+
+Menjalankan dev server Vite dengan hot reload. Bisa juga dibuka lewat browser di `http://localhost:34115` untuk akses devtools dan memanggil method Go langsung.
+
+## Build rilis
+
+**Jangan pakai `wails build` polos untuk rilis** — API URL default-nya menunjuk ke `localhost:8080` (lihat `backend/sync_service.go`), sehingga binary hasil build akan menembak mesin development, bukan server produksi.
+
+Gunakan script rilis, yang menyuntikkan URL produksi lewat `-ldflags -X`:
+
+```powershell
+./build-release.ps1                # build biasa
+./build-release.ps1 -Installer     # + bikin installer NSIS (build/bin/*-installer.exe)
+./build-release.ps1 -Obfuscate     # + obfuscate simbol via garble (butuh garble terpasang)
+```
+
+Catatan: obfuscation di sini hanya menaikkan biaya membaca binary, bukan mekanisme proteksi — hak akses (sinkron cloud) dijaga di server via signed device key, bukan di client.
+
+Binary hasil build (`*.exe`, `build/bin/`) sengaja **tidak** disertakan di repo ini (lihat `.gitignore`) — didistribusikan lewat GitHub Releases, bukan lewat riwayat git.
